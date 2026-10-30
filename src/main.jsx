@@ -5,6 +5,11 @@ import { supabase } from "./supabase.js";
 import "./style.css";
 
 function App() {
+  const [session, setSession] = useState(null);
+  const [checking, setChecking] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [patients, setPatients] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,6 +26,45 @@ function App() {
     medical_history: ""
   });
 
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) setLoginError(error.message);
+      setSession(data?.session || null);
+      setChecking(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, newSession) => {
+        setSession(newSession);
+      }
+    );
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (session) loadPatients();
+  }, [session]);
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    setLoginError("");
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password
+    });
+
+    if (error) {
+      setLoginError("Login नहीं हुआ: " + error.message);
+    }
+  }
+
+  async function handleLogout() {
+    const { error } = await supabase.auth.signOut();
+    if (error) setMessage("Logout नहीं हुआ: " + error.message);
+  }
+
   async function loadPatients() {
     setLoading(true);
 
@@ -33,14 +77,11 @@ function App() {
       setMessage("मरीजों की सूची नहीं खुली: " + error.message);
     } else {
       setPatients(data || []);
+      setMessage("");
     }
 
     setLoading(false);
   }
-
-  useEffect(() => {
-    loadPatients();
-  }, []);
 
   function updateField(e) {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -53,38 +94,28 @@ function App() {
 
     if (error) throw error;
 
-    let highestNumber = 0;
+    let highest = 0;
 
     (data || []).forEach((patient) => {
       const match = String(patient.patient_code || "").match(/^K(\d+)$/i);
-
-      if (match) {
-        highestNumber = Math.max(highestNumber, Number(match[1]));
-      }
+      if (match) highest = Math.max(highest, Number(match[1]));
     });
 
-    return "K" + String(highestNumber + 1).padStart(3, "0");
+    return "K" + String(highest + 1).padStart(3, "0");
   }
 
   async function addPatient(e) {
     e.preventDefault();
-    if (saving) return;
-
-    setSaving(true);
     setMessage("");
+    setSaving(true);
 
     try {
       const patientCode = await generatePatientCode();
 
       const { error } = await supabase.from("patients").insert([{
-        full_name: form.full_name,
+        ...form,
         patient_code: patientCode,
-        phone: form.phone,
-        age: form.age ? Number(form.age) : null,
-        gender: form.gender,
-        address: form.address,
-        diagnosis: form.diagnosis,
-        medical_history: form.medical_history
+        age: form.age ? Number(form.age) : null
       }]);
 
       if (error) throw error;
@@ -110,9 +141,59 @@ function App() {
   }
 
   const filtered = patients.filter((p) =>
-    [p.full_name, p.patient_code, p.phone]
-      .some((v) => String(v || "").toLowerCase().includes(search.toLowerCase()))
+    [p.full_name, p.patient_code, p.phone].some((v) =>
+      String(v || "").toLowerCase().includes(search.toLowerCase())
+    )
   );
+
+  if (checking) {
+    return <main className="app"><section className="card">लोड हो रहा है...</section></main>;
+  }
+
+  if (!session) {
+    return (
+      <main className="app">
+        <header className="header">
+          <div className="logo">K</div>
+          <div>
+            <h1>Kartikey Physiotherapy Clinic</h1>
+            <p>OPD Management System</p>
+          </div>
+        </header>
+
+        <section className="card">
+          <h2>Owner Login</h2>
+          <p>अपने Email और Password से Login करें।</p>
+
+          <form className="patient-form" onSubmit={handleLogin}>
+            <label>Email
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </label>
+
+            <label>Password
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </label>
+
+            <button type="submit">Login करें</button>
+          </form>
+
+          {loginError && <p role="alert">{loginError}</p>}
+        </section>
+
+        <footer>Physiotherapist Vinod Sharma</footer>
+      </main>
+    );
+  }
 
   return (
     <main className="app">
@@ -127,6 +208,8 @@ function App() {
       <section className="welcome">
         <h2>मरीज प्रबंधन</h2>
         <p>नया मरीज जोड़ें और पुराने मरीजों का रिकॉर्ड खोजें।</p>
+        <p>Login: {session.user.email}</p>
+        <button type="button" onClick={handleLogout}>Logout</button>
       </section>
 
       <section className="card">
@@ -211,7 +294,6 @@ function App() {
                 ))}
               </tbody>
             </table>
-
             {!loading && filtered.length === 0 && <p>अभी कोई मरीज नहीं मिला।</p>}
           </div>
         )}
