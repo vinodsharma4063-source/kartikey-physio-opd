@@ -1,216 +1,4 @@
-import React, { useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
-import { supabase } from "./supabase";
-import "./style.css";
-
-function App() {
-  const [session, setSession] = useState(null);
-  const [checking, setChecking] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [patients, setPatients] = useState([]);
-  const [search, setSearch] = useState("");
-  const [form, setForm] = useState({
-    full_name: "", phone: "", age: "", gender: "",
-    address: "", diagnosis: "", medical_history: ""
-  });
-  const [selectedPatient, setSelectedPatient] = useState(null);
-  const [visits, setVisits] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [visitForm, setVisitForm] = useState({
-    visit_date: new Date().toLocaleDateString("en-CA"),
-    treatment: "", notes: "", fee: ""
-  });
-  const [paymentForm, setPaymentForm] = useState({
-    amount: "", payment_method: "Cash",
-    payment_date: new Date().toLocaleDateString("en-CA"),
-    notes: ""
-  });
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setChecking(false);
-    });
-
-    const { data: { subscription } } =
-      supabase.auth.onAuthStateChange((_event, newSession) => {
-        setSession(newSession);
-      });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (session) loadPatients();
-  }, [session]);
-
-  async function login(e) {
-    e.preventDefault();
-    setLoginError("");
-    setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(), password
-    });
-    if (error) setLoginError(error.message);
-    else setSession(data.session);
-    setLoading(false);
-  }
-
-  async function logout() {
-    await supabase.auth.signOut();
-    setSession(null);
-    setSelectedPatient(null);
-  }
-
-  async function loadPatients() {
-    const { data, error } = await supabase
-      .from("patients").select("*").order("created_at", { ascending: false });
-    if (error) setError(error.message);
-    else setPatients(data || []);
-  }
-
-  async function nextPatientCode() {
-    const { data, error } = await supabase
-      .from("patients").select("patient_code");
-    if (error) throw error;
-    let max = 0;
-    (data || []).forEach(p => {
-      const match = String(p.patient_code || "").match(/^K(\d+)$/i);
-      if (match) max = Math.max(max, Number(match[1]));
-    });
-    return "K" + String(max + 1).padStart(3, "0");
-  }
-
-  async function addPatient(e) {
-    e.preventDefault();
-    setError("");
-    setMessage("");
-    if (!form.full_name.trim()) {
-      setError("Patient का नाम लिखें।");
-      return;
-    }
-    setLoading(true);
-    try {
-      const code = await nextPatientCode();
-      const { error } = await supabase.from("patients").insert([{
-        patient_code: code,
-        full_name: form.full_name.trim(),
-        phone: form.phone.trim() || null,
-        age: form.age === "" ? null : Number(form.age),
-        gender: form.gender || null,
-        address: form.address.trim() || null,
-        diagnosis: form.diagnosis.trim() || null,
-        medical_history: form.medical_history.trim() || null
-      }]);
-      if (error) throw error;
-      setForm({
-        full_name: "", phone: "", age: "", gender: "",
-        address: "", diagnosis: "", medical_history: ""
-      });
-      setMessage("Patient सेव हो गया। Patient Code: " + code);
-      await loadPatients();
-    } catch (err) {
-      setError("Patient सेव नहीं हुआ: " + err.message);
-    }
-    setLoading(false);
-  }
-
-  async function openHistory(patient) {
-    setSelectedPatient(patient);
-    setVisits([]);
-    setPayments([]);
-    setError("");
-    setMessage("");
-
-    const [visitResult, paymentResult] = await Promise.all([
-      supabase.from("visits").select("*")
-        .eq("patient_id", patient.id).order("session_number", { ascending: true }),
-      supabase.from("payments").select("*")
-        .eq("patient_id", patient.id).order("payment_date", { ascending: false })
-    ]);
-
-    if (visitResult.error) setError("Session History: " + visitResult.error.message);
-    else setVisits(visitResult.data || []);
-
-    if (paymentResult.error) {
-      setError("Payment History: " + paymentResult.error.message);
-    } else {
-      setPayments(paymentResult.data || []);
-    }
-  }
-
-  async function addVisit(e) {
-    e.preventDefault();
-    setError("");
-    setMessage("");
-    if (!visitForm.treatment.trim()) {
-      setError("Treatment लिखें।");
-      return;
-    }
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.from("visits")
-        .select("session_number").eq("patient_id", selectedPatient.id);
-      if (error) throw error;
-
-      const max = (data || []).reduce(
-        (n, v) => Math.max(n, Number(v.session_number) || 0), 0
-      );
-
-      const { error: insertError } = await supabase.from("visits").insert([{
-        patient_id: selectedPatient.id,
-        visit_date: visitForm.visit_date,
-        treatment: visitForm.treatment.trim(),
-        session_number: max + 1,
-        notes: visitForm.notes.trim() || null,
-        fee: visitForm.fee === "" ? null : Number(visitForm.fee)
-      }]);
-
-      if (insertError) throw insertError;
-
-      setVisitForm({
-        visit_date: new Date().toLocaleDateString("en-CA"),
-        treatment: "", notes: "", fee: ""
-      });
-      setMessage("Session " + (max + 1) + " सेव हो गया।");
-      await openHistory(selectedPatient);
-    } catch (err) {
-      setError("Session सेव नहीं हुआ: " + err.message);
-    }
-    setLoading(false);
-  }
-
-  async function addPayment(e) {
-    e.preventDefault();
-    setError("");
-    setMessage("");
-
-    const amount = Number(paymentForm.amount);
-    if (!amount || amount <= 0) {
-      setError("कृपया सही Payment Amount भरें।");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { error } = await supabase.from("payments").insert([{
-        patient_id: selectedPatient.id,
-        amount,
-        payment_method: paymentForm.payment_method,
-        payment_date: paymentForm.payment_date,
-        notes: paymentForm.notes.trim() || null
-      }]);
-
-      if (error) throw error;
-
-      setPaymentForm({
-        amount: "",
-        payment_method: "Cash",
+payment_method: "Cash",
         payment_date: new Date().toLocaleDateString("en-CA"),
         notes: ""
       });
@@ -368,15 +156,26 @@ function App() {
             <label>Session Date *</label>
             <input type="date" value={visitForm.visit_date}
               onChange={e => setVisitForm({...visitForm,visit_date:e.target.value})} required />
-            <label>Treatment *</label>
+            <label>Attendance Status *</label>
+            <select
+              value={visitForm.attendance_status}
+              onChange={e => setVisitForm({...visitForm, attendance_status:e.target.value})}
+            >
+              <option value="Present">Present</option>
+              <option value="Absent">Absent</option>
+              <option value="Holiday">Holiday</option>
+            </select>
+            <label>Treatment {visitForm.attendance_status === "Present" ? "*" : "(Optional)"}</label>
             <input value={visitForm.treatment}
               onChange={e => setVisitForm({...visitForm,treatment:e.target.value})}
-              placeholder="IFT, Ultrasound, Exercise" required />
+              placeholder="IFT, Ultrasound, Exercise"
+              required={visitForm.attendance_status === "Present"} />
             <label>Notes</label>
             <textarea value={visitForm.notes}
               onChange={e => setVisitForm({...visitForm,notes:e.target.value})} />
-            <label>Session Fee (₹)</label>
+            <label>Session Fee (₹) {visitForm.attendance_status !== "Present" ? "(Present के लिए ही)" : ""}</label>
             <input type="number" min="0" step="0.01" value={visitForm.fee}
+              disabled={visitForm.attendance_status !== "Present"}
               onChange={e => setVisitForm({...visitForm,fee:e.target.value})} />
             <button disabled={loading}>Save Daily Session</button>
           </form>
@@ -384,78 +183,10 @@ function App() {
           <h2>Previous Sessions</h2>
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Session</th><th>Date</th><th>Treatment</th><th>Notes</th><th>Fee</th></tr></thead>
+              <thead><tr><th>Session</th><th>Date</th><th>Attendance</th><th>Treatment</th><th>Notes</th><th>Fee</th></tr></thead>
               <tbody>
                 {visits.map(v => (
                   <tr key={v.id}>
-                    <td>{v.session_number}</td><td>{v.visit_date}</td>
-                    <td>{v.treatment}</td><td>{v.notes || "—"}</td>
-                    <td>{v.fee == null ? "—" : "₹" + v.fee}</td>
-                  </tr>
-                ))}
-                {visits.length === 0 && <tr><td colSpan="5">अभी कोई Session नहीं है।</td></tr>}
-              </tbody>
-            </table>
-          </div>
-
-          <hr />
-          <h2>Payment & Balance</h2>
-          <div className="card">
-            <p><strong>Total Session Fees:</strong> ₹{totalFee.toFixed(2)}</p>
-            <p><strong>Total Paid:</strong> ₹{totalPaid.toFixed(2)}</p>
-            <p style={{color: balance > 0 ? "red" : "green"}}>
-              <strong>{balance > 0 ? "Balance Due:" : "Advance / No Due:"}</strong>
-              {" ₹" + Math.abs(balance).toFixed(2)}
-            </p>
-          </div>
-
-          <h3>Add New Payment</h3>
-          <form className="patient-form" onSubmit={addPayment}>
-            <label>Payment Amount (₹) *</label>
-            <input type="number" min="0.01" step="0.01"
-              value={paymentForm.amount}
-              onChange={e => setPaymentForm({...paymentForm,amount:e.target.value})}
-              placeholder="जितनी रकम मिली है" required />
-            <label>Payment Date *</label>
-            <input type="date" value={paymentForm.payment_date}
-              onChange={e => setPaymentForm({...paymentForm,payment_date:e.target.value})} required />
-            <label>Payment Method</label>
-            <select value={paymentForm.payment_method}
-              onChange={e => setPaymentForm({...paymentForm,payment_method:e.target.value})}>
-              <option>Cash</option><option>UPI</option>
-              <option>Card</option><option>Bank Transfer</option>
-            </select>
-            <label>Notes</label>
-            <textarea value={paymentForm.notes}
-              onChange={e => setPaymentForm({...paymentForm,notes:e.target.value})}
-              placeholder="Payment की जानकारी" />
-            <button disabled={loading}>{loading ? "Saving..." : "Save Payment"}</button>
-          </form>
-
-          <h3>Payment History</h3>
-          <div className="table-wrap">
-            <table className="table">
-              <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Notes</th></tr></thead>
-              <tbody>
-                {payments.map(p => (
-                  <tr key={p.id}>
-                    <td>{p.payment_date}</td><td>₹{Number(p.amount).toFixed(2)}</td>
-                    <td>{p.payment_method || "Cash"}</td><td>{p.notes || "—"}</td>
-                  </tr>
-                ))}
-                {payments.length === 0 && <tr><td colSpan="4">अभी कोई Payment दर्ज नहीं है।</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      <footer style={{textAlign:"center",padding:"20px"}}>
-        Kartikey Physiotherapy Clinic, Lalkuan<br />
-        Physiotherapist Vinod Sharma | 9761230211
-      </footer>
-    </div>
-  );
-}
-
-createRoot(document.getElementById("root")).render(<App />);
+                    <td>{v.session_number ?? "—"}</td><td>{v.visit_date}</td>
+                    <td>{v.attendance_status || "Present"}</td>
+                    <td>{v.treatment || "—"}</td><td>{v.notes || "—"}</td>
