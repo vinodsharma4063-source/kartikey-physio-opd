@@ -1,4 +1,36 @@
-payment_method: "Cash",
+aawait openHistory(selectedPatient);
+    } catch (err) {
+      setError("Attendance / Session सेव नहीं हुआ: " + err.message);
+    }
+    setLoading(false);
+  }
+
+  async function addPayment(e) {
+    e.preventDefault();
+    setError("");
+    setMessage("");
+
+    const amount = Number(paymentForm.amount);
+    if (!amount || amount <= 0) {
+      setError("कृपया सही Payment Amount भरें।");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.from("payments").insert([{
+        patient_id: selectedPatient.id,
+        amount,
+        payment_method: paymentForm.payment_method,
+        payment_date: paymentForm.payment_date,
+        notes: paymentForm.notes.trim() || null
+      }]);
+
+      if (error) throw error;
+
+      setPaymentForm({
+        amount: "",
+        payment_method: "Cash",
         payment_date: new Date().toLocaleDateString("en-CA"),
         notes: ""
       });
@@ -158,35 +190,3 @@ payment_method: "Cash",
               onChange={e => setVisitForm({...visitForm,visit_date:e.target.value})} required />
             <label>Attendance Status *</label>
             <select
-              value={visitForm.attendance_status}
-              onChange={e => setVisitForm({...visitForm, attendance_status:e.target.value})}
-            >
-              <option value="Present">Present</option>
-              <option value="Absent">Absent</option>
-              <option value="Holiday">Holiday</option>
-            </select>
-            <label>Treatment {visitForm.attendance_status === "Present" ? "*" : "(Optional)"}</label>
-            <input value={visitForm.treatment}
-              onChange={e => setVisitForm({...visitForm,treatment:e.target.value})}
-              placeholder="IFT, Ultrasound, Exercise"
-              required={visitForm.attendance_status === "Present"} />
-            <label>Notes</label>
-            <textarea value={visitForm.notes}
-              onChange={e => setVisitForm({...visitForm,notes:e.target.value})} />
-            <label>Session Fee (₹) {visitForm.attendance_status !== "Present" ? "(Present के लिए ही)" : ""}</label>
-            <input type="number" min="0" step="0.01" value={visitForm.fee}
-              disabled={visitForm.attendance_status !== "Present"}
-              onChange={e => setVisitForm({...visitForm,fee:e.target.value})} />
-            <button disabled={loading}>Save Daily Session</button>
-          </form>
-
-          <h2>Previous Sessions</h2>
-          <div className="table-wrap">
-            <table className="table">
-              <thead><tr><th>Session</th><th>Date</th><th>Attendance</th><th>Treatment</th><th>Notes</th><th>Fee</th></tr></thead>
-              <tbody>
-                {visits.map(v => (
-                  <tr key={v.id}>
-                    <td>{v.session_number ?? "—"}</td><td>{v.visit_date}</td>
-                    <td>{v.attendance_status || "Present"}</td>
-                    <td>{v.treatment || "—"}</td><td>{v.notes || "—"}</td>
