@@ -21,6 +21,8 @@ function App() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [visits, setVisits] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [billFromDate, setBillFromDate] = useState("");
+const [billToDate, setBillToDate] = useState("");
 
   const [visitForm, setVisitForm] = useState({
     visit_date: new Date().toLocaleDateString("en-CA"),
@@ -250,112 +252,146 @@ function App() {
     }
 
     setLoading(false);
-  }  function printSessionBill(visit) {
-    const patient = selectedPatient;
-    const status = visit.attendance_status || "Present";
+  }  
+function printPatientBill(mode, singleVisit = null) {
+  const patient = selectedPatient;
 
-    const paymentRows = payments.map(p => `
-      <tr>
-        <td>${p.payment_date || "—"}</td>
-        <td>₹${Number(p.amount || 0).toFixed(2)}</td>
-        <td>${p.payment_method || "Cash"}</td>
-      </tr>
-    `).join("");
+  let billVisits = [...visits];
 
-    const totalFee = visits.reduce(
-      (sum, v) => sum + (Number(v.fee) || 0), 0
-    );
+  if (mode === "single") {
+    billVisits = visits.filter(v => v.id === singleVisit.id);
+  }
 
-    const totalPaid = payments.reduce(
-      (sum, p) => sum + (Number(p.amount) || 0), 0
-    );
-
-    const balance = totalFee - totalPaid;
-
-    const safe = value => String(value ?? "—")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-
-    const billWindow = window.open("", "_blank");
-
-    if (!billWindow) {
-      alert("कृपया इस वेबसाइट के लिए Pop-ups Allow करें।");
+  if (mode === "range") {
+    if (!billFromDate || !billToDate) {
+      alert("कृपया From Date और To Date चुनें।");
       return;
     }
 
-    billWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Physiotherapy Session Bill</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 25px; color: #222; }
-          h1, h2, p { text-align: center; }
-          h1 { margin-bottom: 5px; }
-          .line { border-top: 2px solid #333; margin: 15px 0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-          th, td { border: 1px solid #777; padding: 9px; text-align: left; }
-          .sign { display: flex; justify-content: space-between; margin-top: 75px; }
-          .sign div { border-top: 1px solid #333; padding-top: 8px; width: 40%; text-align: center; }
-          @media print { button { display: none; } }
-        </style>
-      </head>
-      <body>
-        <h1>Kartikey Physiotherapy Clinic</h1>
-        <p>Lalkuan</p>
-        <p>Physiotherapist Vinod Sharma | 9761230211</p>
-        <div class="line"></div>
-
-        <h2>SESSION BILL</h2>
-
-        <p><b>Patient Code:</b> ${safe(patient.patient_code)}</p>
-        <p><b>Patient Name:</b> ${safe(patient.full_name)}</p>
-        <p><b>Mobile:</b> ${safe(patient.phone)}</p>
-        <p><b>Diagnosis:</b> ${safe(patient.diagnosis)}</p>
-
-        <div class="line"></div>
-
-        <h3>Session Details</h3>
-        <table>
-          <tr><th>Session No.</th><th>Date</th><th>Attendance</th><th>Treatment</th><th>Fee</th></tr>
-          <tr>
-            <td>${safe(visit.session_number)}</td>
-            <td>${safe(visit.visit_date)}</td>
-            <td>${safe(status)}</td>
-            <td>${safe(visit.treatment)}</td>
-            <td>₹${Number(visit.fee || 0).toFixed(2)}</td>
-          </tr>
-        </table>
-
-        <h3>Patient Account Summary</h3>
-        <p>Total Session Fees: ₹${totalFee.toFixed(2)}</p>
-        <p>Total Paid: ₹${totalPaid.toFixed(2)}</p>
-        <p><b>${balance > 0 ? "Balance Due" : "Advance / No Due"}: ₹${Math.abs(balance).toFixed(2)}</b></p>
-
-        <h3>Payment History</h3>
-        <table>
-          <tr><th>Date</th><th>Amount</th><th>Method</th></tr>
-          ${paymentRows || "<tr><td colspan='3'>No payment recorded</td></tr>"}
-        </table>
-
-        <div class="sign">
-          <div>Patient Signature</div>
-          <div>Clinic Signature</div>
-        </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-          };
-        <\/script>
-      </body>
-      </html>
-    `);
-
-    billWindow.document.close();
+    billVisits = visits.filter(v =>
+      v.visit_date >= billFromDate &&
+      v.visit_date <= billToDate
+    );
   }
+
+  billVisits.sort((a, b) =>
+    String(a.visit_date).localeCompare(String(b.visit_date))
+  );
+
+  if (billVisits.length === 0) {
+    alert("इस अवधि में कोई Session रिकॉर्ड नहीं मिला।");
+    return;
+  }
+
+  const totalFee = visits.reduce(
+    (sum, v) => sum + Number(v.fee || 0), 0
+  );
+
+  const totalPaid = payments.reduce(
+    (sum, p) => sum + Number(p.amount || 0), 0
+  );
+
+  const balance = totalFee - totalPaid;
+
+  const safe = value => String(value ?? "—")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+  const rows = billVisits.map(v => `
+    <tr>
+      <td>${safe(v.session_number)}</td>
+      <td>${safe(v.visit_date)}</td>
+      <td>${safe(v.attendance_status || "Present")}</td>
+      <td>${safe(v.treatment)}</td>
+      <td>₹${Number(v.fee || 0).toFixed(2)}</td>
+    </tr>
+  `).join("");
+
+  const paymentRows = payments.map(p => `
+    <tr>
+      <td>${safe(p.payment_date)}</td>
+      <td>₹${Number(p.amount || 0).toFixed(2)}</td>
+      <td>${safe(p.payment_method || "Cash")}</td>
+    </tr>
+  `).join("");
+
+  const billWindow = window.open("", "_blank");
+
+  if (!billWindow) {
+    alert("कृपया इस वेबसाइट के लिए Pop-ups Allow करें।");
+    return;
+  }
+
+  billWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Patient Bill</title>
+      <style>
+        body { font-family: Arial; padding: 25px; color: #222; }
+        h1, h2, p { text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { border: 1px solid #777; padding: 8px; text-align: left; }
+        .line { border-top: 2px solid #333; margin: 15px 0; }
+        .sign { display: flex; justify-content: space-between; margin-top: 75px; }
+        .sign div { border-top: 1px solid #333; padding-top: 8px; width: 40%; text-align: center; }
+        @media print { button { display: none; } }
+      </style>
+    </head>
+    <body>
+      <h1>Kartikey Physiotherapy Clinic</h1>
+      <p>Lalkuan</p>
+      <p>Physiotherapist Vinod Sharma | 9761230211</p>
+      <div class="line"></div>
+
+      <h2>${mode === "single" ? "SESSION BILL" : mode === "range" ? "DATE TO DATE BILL" : "COMPLETE PATIENT BILL"}</h2>
+
+      <p><b>Patient Code:</b> ${safe(patient.patient_code)}</p>
+      <p><b>Patient Name:</b> ${safe(patient.full_name)}</p>
+      <p><b>Mobile:</b> ${safe(patient.phone)}</p>
+      <p><b>Diagnosis:</b> ${safe(patient.diagnosis)}</p>
+
+      <div class="line"></div>
+      <h3>Session Details</h3>
+      <table>
+        <tr>
+          <th>Session</th><th>Date</th><th>Attendance</th><th>Treatment</th><th>Fee</th>
+        </tr>
+        ${rows}
+      </table>
+
+      <h3>Patient Account Summary (All Dates)</h3>
+      <p>Total Session Fees: ₹${totalFee.toFixed(2)}</p>
+      <p>Total Paid: ₹${totalPaid.toFixed(2)}</p>
+      <p><b>${balance > 0 ? "Balance Due" : "Advance / No Due"}: ₹${Math.abs(balance).toFixed(2)}</b></p>
+
+      <h3>Payment History</h3>
+      <table>
+        <tr><th>Date</th><th>Amount</th><th>Method</th></tr>
+        ${paymentRows || "<tr><td colspan='3'>No payment recorded</td></tr>"}
+      </table>
+
+      <div class="sign">
+        <div>Patient Signature</div>
+        <div>Clinic Signature</div>
+      </div>
+
+      <script>
+        window.onload = function() { window.print(); };
+      <\/script>
+    </body>
+    </html>
+  `);
+
+  billWindow.document.close();
+}
+
+function printSessionBill(visit) {
+  printPatientBill("single", visit);
+}
+
 
   async function addPayment(e) {
     e.preventDefault();
@@ -745,6 +781,37 @@ function App() {
           </form>
 
           <h2>Previous Sessions & Attendance</h2>
+
+<div style={{ margin: "15px 0", padding: "15px", border: "1px solid #ccc", borderRadius: "8px" }}>
+  <h3>Patient Bill Options</h3>
+
+  <button type="button" onClick={() => printPatientBill("all")}>
+    Complete Patient Bill PDF
+  </button>
+
+  <div style={{ marginTop: "12px" }}>
+    <label>From Date</label>
+    <input
+      type="date"
+      value={billFromDate}
+      onChange={e => setBillFromDate(e.target.value)}
+    />
+
+    <label>To Date</label>
+    <input
+      type="date"
+      value={billToDate}
+      onChange={e => setBillToDate(e.target.value)}
+    />
+
+    <button
+      type="button"
+      onClick={() => printPatientBill("range")}
+    >
+      Date-to-Date Bill PDF
+    </button>
+  </div>
+</div>
 
           <div className="table-wrap">
             <table className="table">
