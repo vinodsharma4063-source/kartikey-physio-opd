@@ -778,6 +778,14 @@ function App() {
                       <td>
                         {v.fee == null ? "—" : "₹" + v.fee}
                       </td>
+                      <td>
+  <button
+    type="button"
+    onClick={() => printSessionBill(v)}
+  >
+    Print / Save PDF
+  </button>
+</td>
                     </tr>
                   );
                 })}
