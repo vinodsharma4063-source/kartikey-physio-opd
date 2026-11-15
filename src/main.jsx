@@ -37,7 +37,19 @@ function sortAndNumberVisits(rows) {
     };
   });
 }
+function formatDisplayDate(dateValue) {
+  if (!dateValue) return "—";
 
+  const datePart = String(dateValue).slice(0, 10);
+  const parts = datePart.split("-");
+
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    return `${day}-${month}-${year}`;
+  }
+
+  return datePart;
+}
 function App() {
   const [session, setSession] = useState(null);
   const [checking, setChecking] = useState(true);
@@ -288,288 +300,350 @@ function App() {
     setLoading(false);
   }
 
-  function printPatientBill(mode, singleVisit = null) {
-    const patient = selectedPatient;
+function printPatientBill(mode, singleVisit = null) {
+  const patient = selectedPatient;
 
-    let billVisits = [...visits];
+  if (!patient) {
+    alert("कृपया पहले Patient चुनें।");
+    return;
+  }
 
-    if (mode === "single") {
-      billVisits = visits.filter(v => v.id === singleVisit.id);
-    }
+  if (mode === "single" && !singleVisit) {
+  alert("कृपया पहले Session चुनें।");
+  return;
+}
 
-    if (mode === "range") {
-      if (!billFromDate || !billToDate) {
-        alert("कृपया From Date और To Date चुनें।");
-        return;
-      }
+const safe = value =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  const money = value => Number(value || 0).toFixed(2);
 
-      billVisits = visits.filter(v =>
-        v.visit_date >= billFromDate &&
-        v.visit_date <= billToDate
-      );
-    }
-
-    billVisits.sort((a, b) =>
-      String(a.visit_date).localeCompare(String(b.visit_date))
+  // पूरे मरीज के खाते के सभी Sessions
+  const allVisits = [...visits].sort((a, b) => {
+    const dateCompare = String(a.visit_date || "").localeCompare(
+      String(b.visit_date || "")
     );
 
-    if (billVisits.length === 0) {
-      alert("इस अवधि में कोई Session रिकॉर्ड नहीं मिला।");
-      return;
-    }
+    if (dateCompare !== 0) return dateCompare;
 
-    const totalFee = visits.reduce(
-      (sum, v) => sum + Number(v.fee || 0), 0
+    return Number(a.session_number || 0) -
+      Number(b.session_number || 0);
+  });
+
+  // पूरे मरीज के खाते के सभी Payments
+  const allPayments = [...payments].sort((a, b) =>
+    String(a.payment_date || "").localeCompare(
+      String(b.payment_date || "")
+    )
+  );
+
+  // चुने हुए Bill के Sessions
+  let billVisits = [...allVisits];
+
+  if (mode === "single") {
+    billVisits = allVisits.filter(v => v.id === singleVisit.id);
+  }
+
+  if (mode === "range") {
+    billVisits = allVisits.filter(v =>
+      v.visit_date >= billFromDate &&
+      v.visit_date <= billToDate
     );
+  }
 
-    const totalPaid = payments.reduce(
-      (sum, p) => sum + Number(p.amount || 0), 0
-    );
+  if (billVisits.length === 0) {
+    alert("इस अवधि में कोई Session रिकॉर्ड नहीं मिला।");
+    return;
+  }
 
-    const balance = totalFee - totalPaid;
+  // पूरे खाते का हिसाब
+  const totalFee = allVisits.reduce(
+    (sum, v) => sum + Number(v.fee || 0), 0
+  );
 
-    const safe = value => String(value ?? "—")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+  const totalPaid = allPayments.reduce(
+    (sum, p) => sum + Number(p.amount || 0), 0
+  );
 
+  const balance = totalFee - totalPaid;
 
-    const sortedBillVisits = [...billVisits].sort((a, b) => {
-      const dateCompare = String(a.visit_date || "").localeCompare(
-        String(b.visit_date || "")
-      );
+  // चुनी हुई अवधि के Payments
+  const billPayments = mode === "range"
+    ? allPayments.filter(p =>
+        p.payment_date >= billFromDate &&
+        p.payment_date <= billToDate
+      )
+    : allPayments;
 
-      if (dateCompare !== 0) return dateCompare;
+  const billTotalFee = billVisits.reduce(
+    (sum, v) => sum + Number(v.fee || 0), 0
+  );
 
-      return Number(a.session_number || 0) -
-             Number(b.session_number || 0);
-    });
+  const billTotalPaid = billPayments.reduce(
+    (sum, p) => sum + Number(p.amount || 0), 0
+  );
 
+  const billDifference = billTotalFee - billTotalPaid;
 
+  const rows = billVisits.map(v => `
+    <tr>
+      <td>${safe(v.display_session_number ?? v.session_number ?? "-")}</td>
+      <td>${safe(formatDisplayDate(v.visit_date))}</td>
+      <td>${safe(v.attendance_status || "Present")}</td>
+      <td>${safe(v.treatment || "—")}</td>
+      <td>₹${money(v.fee)}</td>
+    </tr>
+  `).join("");
 
-    const rows = billVisits.map(v => {
+  const paymentRows = billPayments.map(p => `
+    <tr>
+      <td>${safe(formatDisplayDate(p.payment_date))}</td>
+      <td>₹${money(p.amount)}</td>
+      <td>${safe(p.payment_method || "Cash")}</td>
+    </tr>
+  `).join("");
 
+  const periodSummary = mode === "range" ? `
+    <h3>Selected Period Summary</h3>
+    <div class="summary">
+      <p>From Date: ${safe(formatDisplayDate(billFromDate))}</p>
+      <p>To Date: ${safe(formatDisplayDate(billToDate))}</p>
+      <p>Total Sessions / Entries: ${billVisits.length}</p>
+      <p>Present: ${billVisits.filter(v =>
+        (v.attendance_status || "Present") === "Present"
+      ).length}</p>
+      <p>Absent: ${billVisits.filter(v =>
+        v.attendance_status === "Absent"
+      ).length}</p>
+      <p>Holiday: ${billVisits.filter(v =>
+        v.attendance_status === "Holiday"
+      ).length}</p>
+      <p>Period Session Fees: ₹${money(billTotalFee)}</p>
+      <p>Payments Received in Period: ₹${money(billTotalPaid)}</p>
+      <p class="balance">
+        Period Difference: ₹${money(Math.abs(billDifference))}
+        (${billDifference > 0 ? "Fees exceed period payments" :
+          billDifference < 0 ? "Payments exceed period fees" : "Settled"})
+      </p>
+    </div>
+  ` : mode === "single" ? `
+    <h3>Selected Session Summary</h3>
+    <div class="summary">
+      <p>Selected Session Fee: ₹${money(billTotalFee)}</p>
+      <p>Attendance: ${safe(billVisits[0].attendance_status || "Present")}</p>
+    </div>
+  ` : "";
 
+  const billTitle = mode === "single"
+    ? "SINGLE SESSION BILL"
+    : mode === "range"
+      ? "DATE TO DATE BILL"
+      : "COMPLETE SESSION OF PHYSIOTHERAPY BILL";
 
+  const billWindow = window.open("", "_blank");
 
-      return `
-        <tr>
-          <td>${safe(v.display_session_number ?? "-")}</td>
-          <td>${safe(formatDisplayDate(v.visit_date))}</td>
-          <td>${safe(v.attendance_status || "Present")}</td>
-          <td>${safe(v.treatment)}</td>
-          <td>₹${Number(v.fee || 0).toFixed(2)}</td>
-        </tr>
-      `;
-    }).join("");
+  if (!billWindow) {
+    alert("कृपया इस वेबसाइट के लिए Pop-ups Allow करें।");
+    return;
+  }
 
+  billWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>${billTitle}</title>
+      <meta charset="UTF-8">
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          padding: 24px;
+          color: #202938;
+          max-width: 900px;
+          margin: 0 auto;
+        }
 
-    const paymentRows = payments.map(p => `
-      <tr>
-        <td>${safe(formatDisplayDate(p.payment_date))}</td>
-        <td>₹${Number(p.amount || 0).toFixed(2)}</td>
-        <td>${safe(p.payment_method || "Cash")}</td>
-      </tr>
-    `).join("");
+        .clinic-header {
+          text-align: center;
+          border-bottom: 3px solid #174a72;
+          padding-bottom: 14px;
+        }
 
-    const billWindow = window.open("", "_blank");
+        .clinic-header h1 {
+          margin: 0 0 8px;
+          color: #174a72;
+          font-size: 23px;
+        }
 
-    if (!billWindow) {
-      alert("कृपया इस वेबसाइट के लिए Pop-ups Allow करें।");
-      return;
-    }
+        .clinic-header p {
+          margin: 4px 0;
+          line-height: 1.4;
+        }
 
-    billWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Patient Bill</title>
-        <style>
+        h2 {
+          text-align: center;
+          color: #174a72;
+        }
+
+        h3 {
+          color: #174a72;
+          margin-top: 20px;
+        }
+
+        .patient-info p {
+          text-align: left;
+          margin: 7px 0;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 12px;
+        }
+
+        th, td {
+          border: 1px solid #9aa8b5;
+          padding: 9px 8px;
+          text-align: left;
+          font-size: 13px;
+        }
+
+        th {
+          background: #eaf0f5;
+        }
+
+        .line {
+          border-top: 1px solid #c4ced8;
+          margin: 15px 0;
+        }
+
+        .summary {
+          border: 1px solid #d5dee7;
+          border-radius: 6px;
+          padding: 10px 14px;
+          margin-bottom: 15px;
+        }
+
+        .summary p {
+          text-align: left;
+          margin: 8px 0;
+        }
+
+        .balance {
+          font-weight: bold;
+          color: #9b2525;
+        }
+
+        .sign {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 75px;
+        }
+
+        .sign div {
+          border-top: 1px solid #333;
+          padding-top: 8px;
+          width: 40%;
+          text-align: center;
+        }
+
+        @media print {
           body {
-            font-family: Arial, sans-serif;
-            padding: 24px;
-            color: #202938;
-            max-width: 900px;
-            margin: 0 auto;
+            padding: 8mm;
           }
 
-          .clinic-header {
-            text-align: center;
-            border-bottom: 3px solid #174a72;
-            padding-bottom: 14px;
+          tr {
+            break-inside: avoid;
           }
+        }
+      </style>
+    </head>
 
-          .clinic-header h1 {
-            margin: 0 0 8px;
-            color: #174a72;
-            font-size: 23px;
-          }
+    <body>
+      <div class="clinic-header">
+        <h1>${safe(CLINIC_NAME)}</h1>
+        <p>${safe(CLINIC_ADDRESS)}</p>
+        <p><strong>${safe(PHYSIOTHERAPIST)}</strong></p>
+        <p>
+          Registration No.: ${safe(REGISTRATION_NUMBER)}
+          | Mobile: ${safe(CLINIC_MOBILE)}
+        </p>
+      </div>
 
-          .clinic-header p {
-            margin: 4px 0;
-            line-height: 1.4;
-          }
+      <div class="line"></div>
 
-          h2 {
-            text-align: center;
-            color: #174a72;
-          }
+      <h2>${billTitle}</h2>
 
-          h3 {
-            color: #174a72;
-            margin-top: 20px;
-          }
-
-          h1, h2, p {
-            text-align: center;
-          }
-
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 12px;
-          }
-
-          th, td {
-            border: 1px solid #9aa8b5;
-            padding: 9px 8px;
-            text-align: left;
-            font-size: 13px;
-          }
-
-          th {
-            background: #eaf0f5;
-          }
-
-          .line {
-            border-top: 1px solid #c4ced8;
-            margin: 15px 0;
-          }
-
-          .summary {
-            border: 1px solid #d5dee7;
-            border-radius: 6px;
-            padding: 10px 14px;
-          }
-
-          .balance {
-            font-weight: bold;
-            color: #9b2525;
-          }
-
-          .sign {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 75px;
-          }
-
-          .sign div {
-            border-top: 1px solid #333;
-            padding-top: 8px;
-            width: 40%;
-            text-align: center;
-          }
-
-          @media print {
-            body {
-              padding: 8mm;
-            }
-
-            button {
-              display: none;
-            }
-
-            tr {
-              break-inside: avoid;
-            }
-          }
-        </style>
-      </head>
-
-      <body>
-        <div class="clinic-header">
-          <h1>${safe(CLINIC_NAME)}</h1>
-          <p>${safe(CLINIC_ADDRESS)}</p>
-          <p><strong>${safe(PHYSIOTHERAPIST)}</strong></p>
-          <p>
-            Registration No.: ${safe(REGISTRATION_NUMBER)}
-            | Mobile: ${safe(CLINIC_MOBILE)}
-          </p>
-        </div>
-
-        <div class="line"></div>
-
-
-        <h2>
-          ${mode === "single"
-            ? "SESSION BILL"
-            : mode === "range"
-              ? "DATE TO DATE BILL"
-              : "COMPLETE SESSION BILL FOR ALL PHYSIOTHERAPY TREATMENTS"}
-        </h2>
-
-        </h2>
-
+      <div class="patient-info">
         <p><b>Patient Code:</b> ${safe(patient.patient_code)}</p>
         <p><b>Patient Name:</b> ${safe(patient.full_name)}</p>
         <p><b>Mobile:</b> ${safe(patient.phone)}</p>
         <p><b>Diagnosis:</b> ${safe(patient.diagnosis)}</p>
+      </div>
 
-        <div class="line"></div>
+      <div class="line"></div>
 
-        <h3>Session Details</h3>
+      ${periodSummary}
 
-        <table>
-          <tr>
-            <th>Session</th>
-            <th>Date</th>
-            <th>Attendance</th>
-            <th>Treatment</th>
-            <th>Fee</th>
-          </tr>
-          ${rows}
-        </table>
+      <h3>Session Details</h3>
+      <table>
+        <tr>
+          <th>Session</th>
+          <th>Date</th>
+          <th>Attendance</th>
+          <th>Treatment</th>
+          <th>Fee</th>
+        </tr>
+        ${rows}
+      </table>
 
-        <h3>Patient Account Summary (All Dates)</h3>
+      <h3>Patient Account Summary (All Dates)</h3>
+      <div class="summary">
+        <p>Total Session Fees: ₹${money(totalFee)}</p>
+        <p>Total Paid: ₹${money(totalPaid)}</p>
+        <p class="balance">
+          ${balance > 0 ? "Balance Due" :
+            balance < 0 ? "Advance Payment" : "No Due"}:
+          ₹${money(Math.abs(balance))}
+        </p>
+      </div>
 
-        <div class="summary">
-          <p>Total Session Fees: ₹${totalFee.toFixed(2)}</p>
-          <p>Total Paid: ₹${totalPaid.toFixed(2)}</p>
-          <p class="balance">
-            ${balance > 0 ? "Balance Due" : "Advance / No Due"}:
-            ₹${Math.abs(balance).toFixed(2)}
-          </p>
-        </div>
+      <h3>
+        ${mode === "range"
+          ? "Payment History (Selected Period)"
+          : "Payment History (All Dates)"}
+      </h3>
 
-        <h3>Payment History</h3>
+      <table>
+        <tr>
+          <th>Date</th>
+          <th>Amount</th>
+          <th>Method</th>
+        </tr>
+        ${paymentRows ||
+          "<tr><td colspan='3'>No payment recorded</td></tr>"}
+      </table>
 
-        <table>
-          <tr>
-            <th>Date</th>
-            <th>Amount</th>
-            <th>Method</th>
-          </tr>
-          ${paymentRows || "<tr><td colspan='3'>No payment recorded</td></tr>"}
-        </table>
+      <div class="sign">
+        <div>Patient Signature</div>
+        <div>Clinic Signature</div>
+      </div>
 
-        <div class="sign">
-          <div>Patient Signature</div>
-          <div>Clinic Signature</div>
-        </div>
+      <script>
+        window.onload = function() {
+          window.print();
+        };
+      <\/script>
+    </body>
+    </html>
+  `);
 
-        <script>
-          window.onload = function() {
-            window.print();
-          };
-        <\/script>
-      </body>
-      </html>
-    `);
+  billWindow.document.close();
+}
 
-    billWindow.document.close();
-  }
-
+ 
   function printSessionBill(visit) {
     printPatientBill("single", visit);
   }
@@ -996,34 +1070,71 @@ function App() {
               type="button"
               onClick={() => printPatientBill("all")}
             >
-              Complete Patient Bill PDF
+              Complete Session of Physiotherapy Bill PDF
             </button>
 
-            <div style={{ marginTop: "12px" }}>
-              <label>From Date</label>
+            
+<div style={{ marginTop: "12px" }}>
+  <label>From Date (DD-MM-YYYY)</label>
+  <input
+    type="text"
+    placeholder="DD-MM-YYYY"
+    value={billFromDate ? formatDisplayDate(billFromDate) : ""}
+    onChange={e => {
+      const value = e.target.value;
+      if (value === "") {
+        setBillFromDate("");
+        return;
+      }
+      if (!/^\d{2}-\d{2}-\d{4}$/.test(value)) return;
 
-              <input
-                type="date"
-                value={billFromDate}
-                onChange={e => setBillFromDate(e.target.value)}
-              />
+      const [day, month, year] = value.split("-");
+      const date = new Date(Number(year), Number(month) - 1, Number(day));
 
-              <label>To Date</label>
+      if (
+        date.getFullYear() === Number(year) &&
+        date.getMonth() === Number(month) - 1 &&
+        date.getDate() === Number(day)
+      ) {
+        setBillFromDate(`${year}-${month}-${day}`);
+      }
+    }}
+  />
 
-              <input
-                type="date"
-                value={billToDate}
-                onChange={e => setBillToDate(e.target.value)}
-              />
+  <label>To Date (DD-MM-YYYY)</label>
+  <input
+    type="text"
+    placeholder="DD-MM-YYYY"
+    value={billToDate ? formatDisplayDate(billToDate) : ""}
+    onChange={e => {
+      const value = e.target.value;
+      if (value === "") {
+        setBillToDate("");
+        return;
+      }
+      if (!/^\d{2}-\d{2}-\d{4}$/.test(value)) return;
 
-              <button
-                type="button"
-                onClick={() => printPatientBill("range")}
-              >
-                Date-to-Date Bill PDF
-              </button>
+      const [day, month, year] = value.split("-");
+      const date = new Date(Number(year), Number(month) - 1, Number(day));
+
+      if (
+        date.getFullYear() === Number(year) &&
+        date.getMonth() === Number(month) - 1 &&
+        date.getDate() === Number(day)
+      ) {
+        setBillToDate(`${year}-${month}-${day}`);
+      }
+    }}
+  />
+
+  <button
+    type="button"
+    onClick={() => printPatientBill("range")}
+  >
+    Date-to-Date Bill PDF
+  </button>
+</div>
             </div>
-          </div>
 
           <div className="table-wrap">
             <table className="table">
