@@ -10,11 +10,32 @@ const PHYSIOTHERAPIST = "Dr. Vinod Sharma (Physiotherapist, BPT)";
 const REGISTRATION_NUMBER = "BPT/029";
 const CLINIC_MOBILE = "9761230211";
 
-function formatDisplayDate(value) {
-  if (!value) return "—";
-  const datePart = String(value).slice(0, 10);
-  const match = datePart.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? `${match[3]}-${match[2]}-${match[1]}` : String(value);
+
+function sortAndNumberVisits(rows) {
+  const sorted = [...(rows || [])].sort((a, b) => {
+    const dateCompare = String(a.visit_date || "").localeCompare(
+      String(b.visit_date || "")
+    );
+
+    if (dateCompare !== 0) return dateCompare;
+
+    return Number(a.session_number || 0) -
+           Number(b.session_number || 0);
+  });
+
+  let sessionNumber = 0;
+
+  return sorted.map(v => {
+    const isPresent =
+      (v.attendance_status || "Present") === "Present";
+
+    return {
+      ...v,
+      display_session_number: isPresent
+        ? ++sessionNumber
+        : null
+    };
+  });
 }
 
 function App() {
@@ -186,7 +207,7 @@ function App() {
     if (visitResult.error) {
       setError("Session History: " + visitResult.error.message);
     } else {
-      setVisits(visitResult.data || []);
+      setVisits(sortAndNumberVisits(visitResult.data || []));
     }
 
     if (paymentResult.error) {
@@ -313,15 +334,36 @@ function App() {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
 
-    const rows = billVisits.map(v => `
-      <tr>
-        <td>${safe(v.session_number)}</td>
-        <td>${safe(formatDisplayDate(v.visit_date))}</td>
-        <td>${safe(v.attendance_status || "Present")}</td>
-        <td>${safe(v.treatment)}</td>
-        <td>₹${Number(v.fee || 0).toFixed(2)}</td>
-      </tr>
-    `).join("");
+
+    const sortedBillVisits = [...billVisits].sort((a, b) => {
+      const dateCompare = String(a.visit_date || "").localeCompare(
+        String(b.visit_date || "")
+      );
+
+      if (dateCompare !== 0) return dateCompare;
+
+      return Number(a.session_number || 0) -
+             Number(b.session_number || 0);
+    });
+
+
+
+    const rows = billVisits.map(v => {
+
+
+
+
+      return `
+        <tr>
+          <td>${safe(v.display_session_number ?? "-")}</td>
+          <td>${safe(formatDisplayDate(v.visit_date))}</td>
+          <td>${safe(v.attendance_status || "Present")}</td>
+          <td>${safe(v.treatment)}</td>
+          <td>₹${Number(v.fee || 0).toFixed(2)}</td>
+        </tr>
+      `;
+    }).join("");
+
 
     const paymentRows = payments.map(p => `
       <tr>
@@ -458,12 +500,15 @@ function App() {
 
         <div class="line"></div>
 
+
         <h2>
           ${mode === "single"
             ? "SESSION BILL"
             : mode === "range"
               ? "DATE TO DATE BILL"
-              : "COMPLETE PATIENT BILL"}
+              : "COMPLETE SESSION BILL FOR ALL PHYSIOTHERAPY TREATMENTS"}
+        </h2>
+
         </h2>
 
         <p><b>Patient Code:</b> ${safe(patient.patient_code)}</p>
@@ -581,8 +626,12 @@ function App() {
 
   const balance = totalFee - totalPaid;
 
+
   const nextSessionNumber =
-    Math.max(0, ...visits.map(v => Number(v.session_number) || 0)) + 1;
+  visits.filter(v =>
+    (v.attendance_status || "Present") === "Present" &&
+    v.visit_date <= visitForm.visit_date
+  ).length + 1;
 
   const filtered = patients.filter(p => {
     const q = search.toLowerCase();
@@ -936,6 +985,7 @@ function App() {
 
           <div style={{
             margin: "15px 0",
+
             padding: "15px",
             border: "1px solid #ccc",
             borderRadius: "8px"
@@ -995,7 +1045,7 @@ function App() {
 
                   return (
                     <tr key={v.id}>
-                      <td>{v.session_number ?? "—"}</td>
+                      <td>{v.display_session_number ?? "—"}</td>
                       <td>{v.visit_date}</td>
                       <td>{status}</td>
 
