@@ -356,51 +356,35 @@ function updateBillDateInput(value, setText, setDate) {
   let monthPart = "";
   let yearPart = "";
 
-  // Accept both separated dates (9-11-2026) and digits-only typing (9112026).
+  // Accept 9-11-2026, 09-11-2026, 9112026 and 09112026.
   if (raw.includes("-") || raw.includes("/")) {
     const parts = raw.split(/[-/]/);
-    if (parts.length !== 3) {
-      setText(raw);
-      setDate("");
-      return;
-    }
+    if (parts.length !== 3) { setText(raw); setDate(""); return; }
     dayPart = (parts[0] || "").replace(/\D/g, "");
     monthPart = (parts[1] || "").replace(/\D/g, "");
     yearPart = (parts[2] || "").replace(/\D/g, "");
   } else {
     const digits = raw.replace(/\D/g, "");
     if (digits.length === 7) {
-      dayPart = digits.slice(0, 1);
-      monthPart = digits.slice(1, 3);
-      yearPart = digits.slice(3, 7);
+      dayPart = digits.slice(0, 1); monthPart = digits.slice(1, 3); yearPart = digits.slice(3, 7);
     } else if (digits.length === 8) {
-      dayPart = digits.slice(0, 2);
-      monthPart = digits.slice(2, 4);
-      yearPart = digits.slice(4, 8);
-    } else {
-      setText(raw);
-      setDate("");
-      return;
-    }
+      dayPart = digits.slice(0, 2); monthPart = digits.slice(2, 4); yearPart = digits.slice(4, 8);
+    } else { setText(raw); setDate(""); return; }
   }
 
   if (!dayPart || dayPart.length > 2 || !monthPart || monthPart.length > 2 || yearPart.length !== 4) {
-    setText(raw);
-    setDate("");
-    return;
+    setText(raw); setDate(""); return;
   }
 
   const day = Number(dayPart);
   const month = Number(monthPart);
   const year = Number(yearPart);
   const date = new Date(year, month - 1, day);
-
   if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
-    setDate(\`\${year}-\${String(month).padStart(2, "0")}-\${String(day).padStart(2, "0")}\`);
-    setText(\`\${String(day).padStart(2, "0")}-\${String(month).padStart(2, "0")}-\${year}\`);
+    setDate(String(year) + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0"));
+    setText(String(day).padStart(2, "0") + "-" + String(month).padStart(2, "0") + "-" + String(year));
   } else {
-    setText(raw);
-    setDate("");
+    setText(raw); setDate("");
   }
 }
 
