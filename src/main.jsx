@@ -351,20 +351,51 @@ const [billToText, setBillToText] = useState("");
   
 
 function updateBillDateInput(value, setText, setDate) {
-  const digits = String(value || "").replace(/\\D/g, "").slice(0, 8);
-  let formatted = digits;
-  if (digits.length > 4) formatted = digits.slice(0, 2) + "-" + digits.slice(2, 4) + "-" + digits.slice(4);
-  else if (digits.length > 2) formatted = digits.slice(0, 2) + "-" + digits.slice(2);
-  setText(formatted);
+  const raw = String(value || "").trim();
+  let dayPart = "";
+  let monthPart = "";
+  let yearPart = "";
+  let formatted = "";
 
-  if (digits.length !== 8) { setDate(""); return; }
-  const day = Number(digits.slice(0, 2));
-  const month = Number(digits.slice(2, 4));
-  const year = Number(digits.slice(4, 8));
+  // Respect separators when users type dates like 9-11-2026.
+  if (raw.includes("-") || raw.includes("/")) {
+    const parts = raw.split(/[-/]/);
+    dayPart = (parts[0] || "").replace(/\D/g, "").slice(0, 2);
+    monthPart = (parts[1] || "").replace(/\D/g, "").slice(0, 2);
+    yearPart = (parts[2] || "").replace(/\D/g, "").slice(0, 4);
+    const displayDay = raw.split(/[-/]/).length > 1 && dayPart.length === 1 && monthPart
+      ? dayPart.padStart(2, "0") : dayPart;
+    formatted = displayDay;
+    if (raw.includes("-") || raw.includes("/")) formatted += "-" + monthPart;
+    if (parts.length > 2) formatted += "-" + yearPart;
+  } else {
+    const digits = raw.replace(/\D/g, "").slice(0, 8);
+    dayPart = digits.slice(0, 2);
+    monthPart = digits.slice(2, 4);
+    yearPart = digits.slice(4, 8);
+    formatted = digits;
+    if (digits.length > 2) formatted = digits.slice(0, 2) + "-" + digits.slice(2);
+    if (digits.length > 4) formatted = digits.slice(0, 2) + "-" + digits.slice(2, 4) + "-" + digits.slice(4);
+  }
+
+  setText(formatted);
+  if (!dayPart || !monthPart || yearPart.length !== 4) {
+    setDate("");
+    return;
+  }
+
+  const day = Number(dayPart);
+  const month = Number(monthPart);
+  const year = Number(yearPart);
   const date = new Date(year, month - 1, day);
   if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
-    setDate(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
-  } else setDate("");
+    setDate(\`\${year}-\${String(month).padStart(2, "0")}-\${String(day).padStart(2, "0")}\`);
+    if (raw.includes("-") || raw.includes("/")) {
+      setText(\`\${String(day).padStart(2, "0")}-\${String(month).padStart(2, "0")}-\${year}\`);
+    }
+  } else {
+    setDate("");
+  }
 }
 
 function printPatientBill(mode, singleVisit = null) {
