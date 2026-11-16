@@ -351,25 +351,55 @@ const [billToText, setBillToText] = useState("");
   
 
 function updateBillDateInput(value, setText, setDate) {
-  const raw = String(value || "").slice(0, 10);
-  setText(raw);
+  const raw = String(value || "").trim().slice(0, 10);
+  let dayPart = "";
+  let monthPart = "";
+  let yearPart = "";
 
-  // Accept one- or two-digit day/month: 9-11-2026, 09-11-2026, 5/2/2026.
-  const match = raw.trim().match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-  if (!match) {
+  // Accept both separated dates (9-11-2026) and digits-only typing (9112026).
+  if (raw.includes("-") || raw.includes("/")) {
+    const parts = raw.split(/[-/]/);
+    if (parts.length !== 3) {
+      setText(raw);
+      setDate("");
+      return;
+    }
+    dayPart = (parts[0] || "").replace(/\D/g, "");
+    monthPart = (parts[1] || "").replace(/\D/g, "");
+    yearPart = (parts[2] || "").replace(/\D/g, "");
+  } else {
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length === 7) {
+      dayPart = digits.slice(0, 1);
+      monthPart = digits.slice(1, 3);
+      yearPart = digits.slice(3, 7);
+    } else if (digits.length === 8) {
+      dayPart = digits.slice(0, 2);
+      monthPart = digits.slice(2, 4);
+      yearPart = digits.slice(4, 8);
+    } else {
+      setText(raw);
+      setDate("");
+      return;
+    }
+  }
+
+  if (!dayPart || dayPart.length > 2 || !monthPart || monthPart.length > 2 || yearPart.length !== 4) {
+    setText(raw);
     setDate("");
     return;
   }
 
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
+  const day = Number(dayPart);
+  const month = Number(monthPart);
+  const year = Number(yearPart);
   const date = new Date(year, month - 1, day);
 
   if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
-    setDate(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
-    setText(`${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}-${year}`);
+    setDate(\`\${year}-\${String(month).padStart(2, "0")}-\${String(day).padStart(2, "0")}\`);
+    setText(\`\${String(day).padStart(2, "0")}-\${String(month).padStart(2, "0")}-\${year}\`);
   } else {
+    setText(raw);
     setDate("");
   }
 }
