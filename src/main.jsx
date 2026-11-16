@@ -391,8 +391,8 @@ function updateBillDateInput(value, setText, setDate) {
   const date = new Date(year, month - 1, day);
 
   if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
-    setDate(\`\${year}-\${String(month).padStart(2, "0")}-\${String(day).padStart(2, "0")}\`);
-    setText(\`\${String(day).padStart(2, "0")}-\${String(month).padStart(2, "0")}-\${year}\`);
+    setDate(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+    setText(`${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}-${year}`);
   } else {
     setDate("");
   }
