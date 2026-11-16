@@ -350,6 +350,23 @@ const [billToText, setBillToText] = useState("");
 
   
 
+function updateBillDateInput(value, setText, setDate) {
+  const digits = String(value || "").replace(/\\D/g, "").slice(0, 8);
+  let formatted = digits;
+  if (digits.length > 4) formatted = digits.slice(0, 2) + "-" + digits.slice(2, 4) + "-" + digits.slice(4);
+  else if (digits.length > 2) formatted = digits.slice(0, 2) + "-" + digits.slice(2);
+  setText(formatted);
+
+  if (digits.length !== 8) { setDate(""); return; }
+  const day = Number(digits.slice(0, 2));
+  const month = Number(digits.slice(2, 4));
+  const year = Number(digits.slice(4, 8));
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
+    setDate(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  } else setDate("");
+}
+
 function printPatientBill(mode, singleVisit = null) {
   const patient = selectedPatient;
 
@@ -1119,37 +1136,31 @@ const safe = value =>
             </button>
             <div style={{ marginTop: "12px" }}>
               <label>From Date (DD-MM-YYYY)</label>
-              <input
-                type="text"
-                placeholder="DD-MM-YYYY"
-                value={billFromDate ? formatDisplayDate(billFromDate) : ""}
-                onChange={e => {
-                  const value = e.target.value;
-                  if (value === "") { setBillFromDate(""); return; }
-                  if (!/^\\d{2}-\\d{2}-\\d{4}$/.test(value)) return;
-                  const [day, month, year] = value.split("-");
-                  const date = new Date(Number(year), Number(month) - 1, Number(day));
-                  if (date.getFullYear() === Number(year) && date.getMonth() === Number(month) - 1 && date.getDate() === Number(day)) {
-                    setBillFromDate(`${year}-${month}-${day}`);
-                  }
-                }}
-              />
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10}
+                  value={billFromText}
+                  onChange={e => updateBillDateInput(e.target.value, setBillFromText, setBillFromDate)}
+                />
+                <input type="date" aria-label="From Date calendar" value={billFromDate}
+                  onChange={e => {
+                    setBillFromDate(e.target.value);
+                    setBillFromText(e.target.value ? formatDisplayDate(e.target.value) : "");
+                  }}
+                />
+              </div>
               <label>To Date (DD-MM-YYYY)</label>
-              <input
-                type="text"
-                placeholder="DD-MM-YYYY"
-                value={billToDate ? formatDisplayDate(billToDate) : ""}
-                onChange={e => {
-                  const value = e.target.value;
-                  if (value === "") { setBillToDate(""); return; }
-                  if (!/^\\d{2}-\\d{2}-\\d{4}$/.test(value)) return;
-                  const [day, month, year] = value.split("-");
-                  const date = new Date(Number(year), Number(month) - 1, Number(day));
-                  if (date.getFullYear() === Number(year) && date.getMonth() === Number(month) - 1 && date.getDate() === Number(day)) {
-                    setBillToDate(`${year}-${month}-${day}`);
-                  }
-                }}
-              />
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10}
+                  value={billToText}
+                  onChange={e => updateBillDateInput(e.target.value, setBillToText, setBillToDate)}
+                />
+                <input type="date" aria-label="To Date calendar" value={billToDate}
+                  onChange={e => {
+                    setBillToDate(e.target.value);
+                    setBillToText(e.target.value ? formatDisplayDate(e.target.value) : "");
+                  }}
+                />
+              </div>
               <button type="button" onClick={() => {
                 if (!billFromDate || !billToDate) { alert("कृपया From Date और To Date दोनों चुनें।"); return; }
                 if (billFromDate > billToDate) { alert("From Date, To Date से पहले या बराबर होनी चाहिए।"); return; }
