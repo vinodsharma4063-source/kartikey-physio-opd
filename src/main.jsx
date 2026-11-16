@@ -351,35 +351,36 @@ const [billToText, setBillToText] = useState("");
   
 
 function updateBillDateInput(value, setText, setDate) {
-  const raw = String(value || "").trim();
+  // Keep exactly what the user is typing so React does not move the cursor
+  // while auto-inserting hyphens. Accept 9-11-2026 and 09-11-2026.
+  const raw = String(value || "").slice(0, 10);
+  setText(raw);
+
   let dayPart = "";
   let monthPart = "";
   let yearPart = "";
-  let formatted = "";
 
-  // Respect separators when users type dates like 9-11-2026.
   if (raw.includes("-") || raw.includes("/")) {
     const parts = raw.split(/[-/]/);
-    dayPart = (parts[0] || "").replace(/\D/g, "").slice(0, 2);
-    monthPart = (parts[1] || "").replace(/\D/g, "").slice(0, 2);
-    yearPart = (parts[2] || "").replace(/\D/g, "").slice(0, 4);
-    const displayDay = raw.split(/[-/]/).length > 1 && dayPart.length === 1 && monthPart
-      ? dayPart.padStart(2, "0") : dayPart;
-    formatted = displayDay;
-    if (raw.includes("-") || raw.includes("/")) formatted += "-" + monthPart;
-    if (parts.length > 2) formatted += "-" + yearPart;
+    if (parts.length !== 3) {
+      setDate("");
+      return;
+    }
+    dayPart = (parts[0] || "").replace(/\D/g, "");
+    monthPart = (parts[1] || "").replace(/\D/g, "");
+    yearPart = (parts[2] || "").replace(/\D/g, "");
   } else {
-    const digits = raw.replace(/\D/g, "").slice(0, 8);
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length !== 8) {
+      setDate("");
+      return;
+    }
     dayPart = digits.slice(0, 2);
     monthPart = digits.slice(2, 4);
     yearPart = digits.slice(4, 8);
-    formatted = digits;
-    if (digits.length > 2) formatted = digits.slice(0, 2) + "-" + digits.slice(2);
-    if (digits.length > 4) formatted = digits.slice(0, 2) + "-" + digits.slice(2, 4) + "-" + digits.slice(4);
   }
 
-  setText(formatted);
-  if (!dayPart || !monthPart || yearPart.length !== 4) {
+  if (!dayPart || dayPart.length > 2 || !monthPart || monthPart.length > 2 || yearPart.length !== 4) {
     setDate("");
     return;
   }
@@ -388,11 +389,10 @@ function updateBillDateInput(value, setText, setDate) {
   const month = Number(monthPart);
   const year = Number(yearPart);
   const date = new Date(year, month - 1, day);
+
   if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
-    setDate(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
-    if (raw.includes("-") || raw.includes("/")) {
-      setText(`${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}-${year}`);
-    }
+    setDate(\`\${year}-\${String(month).padStart(2, "0")}-\${String(day).padStart(2, "0")}\`);
+    setText(\`\${String(day).padStart(2, "0")}-\${String(month).padStart(2, "0")}-\${year}\`);
   } else {
     setDate("");
   }
