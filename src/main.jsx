@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { supabase } from "./supabase";
 import "./style.css";
@@ -1136,12 +1136,14 @@ const safe = value =>
             </button>
             <div style={{ marginTop: "12px" }}>
               <label>From Date (DD-MM-YYYY)</label>
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 <input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10}
+                  style={{ flex: 1, minWidth: 0 }}
                   value={billFromText}
                   onChange={e => updateBillDateInput(e.target.value, setBillFromText, setBillFromDate)}
                 />
                 <input type="date" aria-label="From Date calendar" value={billFromDate}
+                  style={{ width: "42px", minWidth: "42px", padding: "8px", cursor: "pointer" }}
                   onChange={e => {
                     setBillFromDate(e.target.value);
                     setBillFromText(e.target.value ? formatDisplayDate(e.target.value) : "");
@@ -1149,12 +1151,14 @@ const safe = value =>
                 />
               </div>
               <label>To Date (DD-MM-YYYY)</label>
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 <input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10}
+                  style={{ flex: 1, minWidth: 0 }}
                   value={billToText}
                   onChange={e => updateBillDateInput(e.target.value, setBillToText, setBillToDate)}
                 />
                 <input type="date" aria-label="To Date calendar" value={billToDate}
+                  style={{ width: "42px", minWidth: "42px", padding: "8px", cursor: "pointer" }}
                   onChange={e => {
                     setBillToDate(e.target.value);
                     setBillToText(e.target.value ? formatDisplayDate(e.target.value) : "");
