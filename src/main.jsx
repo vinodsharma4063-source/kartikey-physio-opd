@@ -351,48 +351,24 @@ const [billToText, setBillToText] = useState("");
   
 
 function updateBillDateInput(value, setText, setDate) {
-  // Keep exactly what the user is typing so React does not move the cursor
-  // while auto-inserting hyphens. Accept 9-11-2026 and 09-11-2026.
   const raw = String(value || "").slice(0, 10);
   setText(raw);
 
-  let dayPart = "";
-  let monthPart = "";
-  let yearPart = "";
-
-  if (raw.includes("-") || raw.includes("/")) {
-    const parts = raw.split(/[-/]/);
-    if (parts.length !== 3) {
-      setDate("");
-      return;
-    }
-    dayPart = (parts[0] || "").replace(/\D/g, "");
-    monthPart = (parts[1] || "").replace(/\D/g, "");
-    yearPart = (parts[2] || "").replace(/\D/g, "");
-  } else {
-    const digits = raw.replace(/\D/g, "");
-    if (digits.length !== 8) {
-      setDate("");
-      return;
-    }
-    dayPart = digits.slice(0, 2);
-    monthPart = digits.slice(2, 4);
-    yearPart = digits.slice(4, 8);
-  }
-
-  if (!dayPart || dayPart.length > 2 || !monthPart || monthPart.length > 2 || yearPart.length !== 4) {
+  // Accept one- or two-digit day/month: 9-11-2026, 09-11-2026, 5/2/2026.
+  const match = raw.trim().match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (!match) {
     setDate("");
     return;
   }
 
-  const day = Number(dayPart);
-  const month = Number(monthPart);
-  const year = Number(yearPart);
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
   const date = new Date(year, month - 1, day);
 
   if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
-    setDate(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
-    setText(`${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}-${year}`);
+    setDate(\`\${year}-\${String(month).padStart(2, "0")}-\${String(day).padStart(2, "0")}\`);
+    setText(\`\${String(day).padStart(2, "0")}-\${String(month).padStart(2, "0")}-\${year}\`);
   } else {
     setDate("");
   }
@@ -1172,6 +1148,7 @@ const safe = value =>
                   style={{ flex: 1, minWidth: 0 }}
                   value={billFromText}
                   onChange={e => updateBillDateInput(e.target.value, setBillFromText, setBillFromDate)}
+                  onBlur={e => updateBillDateInput(e.target.value, setBillFromText, setBillFromDate)}
                 />
                 <input type="date" aria-label="From Date calendar" value={billFromDate}
                   style={{ width: "42px", minWidth: "42px", padding: "8px", cursor: "pointer" }}
@@ -1187,6 +1164,7 @@ const safe = value =>
                   style={{ flex: 1, minWidth: 0 }}
                   value={billToText}
                   onChange={e => updateBillDateInput(e.target.value, setBillToText, setBillToDate)}
+                  onBlur={e => updateBillDateInput(e.target.value, setBillToText, setBillToDate)}
                 />
                 <input type="date" aria-label="To Date calendar" value={billToDate}
                   style={{ width: "42px", minWidth: "42px", padding: "8px", cursor: "pointer" }}
