@@ -1112,6 +1112,54 @@ const safe = value =>
 
           <h3>Previous Sessions & Attendance</h3>
 
+          <div style={{ margin: "15px 0", padding: "15px", border: "1px solid #ccc", borderRadius: "8px" }}>
+            <h3>Patient Bill Options</h3>
+            <button type="button" onClick={() => printPatientBill("all")}>
+              Complete Session of Physiotherapy Bill PDF
+            </button>
+            <div style={{ marginTop: "12px" }}>
+              <label>From Date (DD-MM-YYYY)</label>
+              <input
+                type="text"
+                placeholder="DD-MM-YYYY"
+                value={billFromDate ? formatDisplayDate(billFromDate) : ""}
+                onChange={e => {
+                  const value = e.target.value;
+                  if (value === "") { setBillFromDate(""); return; }
+                  if (!/^\\d{2}-\\d{2}-\\d{4}$/.test(value)) return;
+                  const [day, month, year] = value.split("-");
+                  const date = new Date(Number(year), Number(month) - 1, Number(day));
+                  if (date.getFullYear() === Number(year) && date.getMonth() === Number(month) - 1 && date.getDate() === Number(day)) {
+                    setBillFromDate(`${year}-${month}-${day}`);
+                  }
+                }}
+              />
+              <label>To Date (DD-MM-YYYY)</label>
+              <input
+                type="text"
+                placeholder="DD-MM-YYYY"
+                value={billToDate ? formatDisplayDate(billToDate) : ""}
+                onChange={e => {
+                  const value = e.target.value;
+                  if (value === "") { setBillToDate(""); return; }
+                  if (!/^\\d{2}-\\d{2}-\\d{4}$/.test(value)) return;
+                  const [day, month, year] = value.split("-");
+                  const date = new Date(Number(year), Number(month) - 1, Number(day));
+                  if (date.getFullYear() === Number(year) && date.getMonth() === Number(month) - 1 && date.getDate() === Number(day)) {
+                    setBillToDate(`${year}-${month}-${day}`);
+                  }
+                }}
+              />
+              <button type="button" onClick={() => {
+                if (!billFromDate || !billToDate) { alert("कृपया From Date और To Date दोनों चुनें।"); return; }
+                if (billFromDate > billToDate) { alert("From Date, To Date से पहले या बराबर होनी चाहिए।"); return; }
+                printPatientBill("range");
+              }}>
+                Date-to-Date Bill PDF
+              </button>
+            </div>
+          </div>
+
           <div className="table-wrap">
             <table className="table">
               <thead>
@@ -1122,6 +1170,7 @@ const safe = value =>
                   <th>Treatment</th>
                   <th>Fee</th>
                   <th>Notes</th>
+                  <th>Bill PDF</th>
                 </tr>
               </thead>
 
@@ -1143,11 +1192,12 @@ const safe = value =>
                         ₹{Number(v.fee || 0).toFixed(2)}
                       </td>
                       <td>{v.notes || "—"}</td>
+                      <td><button type="button" onClick={() => printSessionBill(v)}>Print / Save PDF</button></td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="6">
+                    <td colSpan="7">
                       No Previous Sessions Found
                     </td>
                   </tr>
