@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { supabase } from "./supabase";
 import "./style.css";
@@ -69,7 +69,8 @@ function App() {
   const [payments, setPayments] = useState([]);
   const [billFromDate, setBillFromDate] = useState("");
   const [billToDate, setBillToDate] = useState("");
-
+const [billFromText, setBillFromText] = useState("");
+const [billToText, setBillToText] = useState("");
   const [visitForm, setVisitForm] = useState({
     visit_date: new Date().toLocaleDateString("en-CA"),
     attendance_status: "Present",
@@ -244,6 +245,7 @@ function App() {
     setLoading(true);
 
     try {
+      // पहले नया Attendance / Session सेव करें
       const { data, error } = await supabase
         .from("visits")
         .select("session_number")
@@ -257,7 +259,6 @@ function App() {
       );
 
       const isPresent = status === "Present";
-      const nextNumber = isPresent ? max + 1 : null;
 
       const { error: insertError } = await supabase
         .from("visits")
@@ -268,7 +269,7 @@ function App() {
           treatment: isPresent
             ? visitForm.treatment.trim()
             : status,
-          session_number: nextNumber,
+          session_number: isPresent ? max + 1 : null,
           notes: visitForm.notes.trim() || null,
           fee: isPresent
             ? (visitForm.fee === "" ? null : Number(visitForm.fee))
@@ -276,6 +277,53 @@ function App() {
         }]);
 
       if (insertError) throw insertError;
+
+      // अब मरीज के सभी रिकॉर्ड दोबारा प्राप्त करें
+      const { data: allRows, error: historyError } = await supabase
+        .from("visits")
+        .select("id, visit_date, attendance_status, session_number")
+        .eq("patient_id", selectedPatient.id);
+
+      if (historyError) throw historyError;
+
+      // तारीख के अनुसार क्रम लगाएँ
+      // एक ही तारीख होने पर पुराना Session पहले रहेगा
+      const sortedRows = [...(allRows || [])].sort((a, b) => {
+        const dateCompare = String(a.visit_date || "").localeCompare(
+          String(b.visit_date || "")
+        );
+
+        if (dateCompare !== 0) return dateCompare;
+
+        return Number(a.session_number || 0) -
+          Number(b.session_number || 0);
+      });
+
+      // केवल Present को Session Number दें
+      let sessionNumber = 0;
+
+      for (const row of sortedRows) {
+        const isRowPresent =
+          (row.attendance_status || "Present") === "Present";
+
+        const newNumber = isRowPresent
+          ? ++sessionNumber
+          : null;
+
+        const oldNumber = row.session_number == null
+          ? null
+          : Number(row.session_number);
+
+        // केवल जरूरत होने पर Database अपडेट करें
+        if (oldNumber !== newNumber) {
+          const { error: updateError } = await supabase
+            .from("visits")
+            .update({ session_number: newNumber })
+            .eq("id", row.id);
+
+          if (updateError) throw updateError;
+        }
+      }
 
       setVisitForm({
         visit_date: new Date().toLocaleDateString("en-CA"),
@@ -285,13 +333,13 @@ function App() {
         fee: ""
       });
 
+      await openHistory(selectedPatient);
+
       setMessage(
         isPresent
-          ? "Session " + nextNumber + " सेव हो गया।"
-          : status + " Attendance सेव हो गई।"
+          ? "Session सेव हो गया। सभी Session Number तारीख के अनुसार अपडेट हो गए।"
+          : status + " Attendance सेव हो गई। Session Number अपडेट हो गए।"
       );
-
-      await openHistory(selectedPatient);
 
     } catch (err) {
       setError("Attendance/Session सेव नहीं हुआ: " + err.message);
@@ -299,6 +347,46 @@ function App() {
 
     setLoading(false);
   }
+
+  
+
+function updateBillDateInput(value, setText, setDate) {
+  const raw = String(value || "").trim().slice(0, 10);
+  let dayPart = "";
+  let monthPart = "";
+  let yearPart = "";
+
+  // Accept 9-11-2026, 09-11-2026, 9112026 and 09112026.
+  if (raw.includes("-") || raw.includes("/")) {
+    const parts = raw.split(/[-/]/);
+    if (parts.length !== 3) { setText(raw); setDate(""); return; }
+    dayPart = (parts[0] || "").replace(/\D/g, "");
+    monthPart = (parts[1] || "").replace(/\D/g, "");
+    yearPart = (parts[2] || "").replace(/\D/g, "");
+  } else {
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length === 7) {
+      dayPart = digits.slice(0, 1); monthPart = digits.slice(1, 3); yearPart = digits.slice(3, 7);
+    } else if (digits.length === 8) {
+      dayPart = digits.slice(0, 2); monthPart = digits.slice(2, 4); yearPart = digits.slice(4, 8);
+    } else { setText(raw); setDate(""); return; }
+  }
+
+  if (!dayPart || dayPart.length > 2 || !monthPart || monthPart.length > 2 || yearPart.length !== 4) {
+    setText(raw); setDate(""); return;
+  }
+
+  const day = Number(dayPart);
+  const month = Number(monthPart);
+  const year = Number(yearPart);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
+    setDate(String(year) + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0"));
+    setText(String(day).padStart(2, "0") + "-" + String(month).padStart(2, "0") + "-" + String(year));
+  } else {
+    setText(raw); setDate("");
+  }
+}
 
 function printPatientBill(mode, singleVisit = null) {
   const patient = selectedPatient;
@@ -1011,7 +1099,8 @@ const safe = value =>
             >
               <option value="Present">Present</option>
               <option value="Absent">Absent</option>
-              <option value="Holiday">Holiday</option>
+<option value="Sunday">Sunday (Weekly Holiday)</option>
+<option value="Holiday">Other Holiday</option>
             </select>
 
             {visitForm.attendance_status === "Present" && (
@@ -1041,153 +1130,113 @@ const safe = value =>
               </>
             )}
 
+
             <label>Notes</label>
 
             <textarea
+              rows={3}
               value={visitForm.notes}
               onChange={e => setVisitForm({
-                ...visitForm, notes: e.target.value
+                ...visitForm,
+                notes: e.target.value
               })}
             />
 
-            <button disabled={loading}>
-              {loading ? "Saving..." : "Save Attendance / Session"}
+            <button type="submit">
+              Save Daily Session
             </button>
           </form>
 
-          <h2>Previous Sessions & Attendance</h2>
 
-          <div style={{
-            margin: "15px 0",
+          <h3>Previous Sessions & Attendance</h3>
 
-            padding: "15px",
-            border: "1px solid #ccc",
-            borderRadius: "8px"
-          }}>
+          <div style={{ margin: "15px 0", padding: "15px", border: "1px solid #ccc", borderRadius: "8px" }}>
             <h3>Patient Bill Options</h3>
-
-            <button
-              type="button"
-              onClick={() => printPatientBill("all")}
-            >
+            <button type="button" onClick={() => printPatientBill("all")}>
               Complete Session of Physiotherapy Bill PDF
             </button>
-
-            
-<div style={{ marginTop: "12px" }}>
-  <label>From Date (DD-MM-YYYY)</label>
-  <input
-    type="text"
-    placeholder="DD-MM-YYYY"
-    value={billFromDate ? formatDisplayDate(billFromDate) : ""}
-    onChange={e => {
-      const value = e.target.value;
-      if (value === "") {
-        setBillFromDate("");
-        return;
-      }
-      if (!/^\d{2}-\d{2}-\d{4}$/.test(value)) return;
-
-      const [day, month, year] = value.split("-");
-      const date = new Date(Number(year), Number(month) - 1, Number(day));
-
-      if (
-        date.getFullYear() === Number(year) &&
-        date.getMonth() === Number(month) - 1 &&
-        date.getDate() === Number(day)
-      ) {
-        setBillFromDate(`${year}-${month}-${day}`);
-      }
-    }}
-  />
-
-  <label>To Date (DD-MM-YYYY)</label>
-  <input
-    type="text"
-    placeholder="DD-MM-YYYY"
-    value={billToDate ? formatDisplayDate(billToDate) : ""}
-    onChange={e => {
-      const value = e.target.value;
-      if (value === "") {
-        setBillToDate("");
-        return;
-      }
-      if (!/^\d{2}-\d{2}-\d{4}$/.test(value)) return;
-
-      const [day, month, year] = value.split("-");
-      const date = new Date(Number(year), Number(month) - 1, Number(day));
-
-      if (
-        date.getFullYear() === Number(year) &&
-        date.getMonth() === Number(month) - 1 &&
-        date.getDate() === Number(day)
-      ) {
-        setBillToDate(`${year}-${month}-${day}`);
-      }
-    }}
-  />
-
-  <button
-    type="button"
-    onClick={() => printPatientBill("range")}
-  >
-    Date-to-Date Bill PDF
-  </button>
-</div>
+            <div style={{ marginTop: "12px" }}>
+              <label>From Date (DD-MM-YYYY)</label>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10}
+                  style={{ flex: 1, minWidth: 0 }}
+                  value={billFromText}
+                  onChange={e => updateBillDateInput(e.target.value, setBillFromText, setBillFromDate)}
+                  onBlur={e => updateBillDateInput(e.target.value, setBillFromText, setBillFromDate)}
+                />
+                <input type="date" aria-label="From Date calendar" value={billFromDate}
+                  style={{ width: "42px", minWidth: "42px", padding: "8px", cursor: "pointer" }}
+                  onChange={e => {
+                    setBillFromDate(e.target.value);
+                    setBillFromText(e.target.value ? formatDisplayDate(e.target.value) : "");
+                  }}
+                />
+              </div>
+              <label>To Date (DD-MM-YYYY)</label>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input type="text" inputMode="numeric" placeholder="DD-MM-YYYY" maxLength={10}
+                  style={{ flex: 1, minWidth: 0 }}
+                  value={billToText}
+                  onChange={e => updateBillDateInput(e.target.value, setBillToText, setBillToDate)}
+                  onBlur={e => updateBillDateInput(e.target.value, setBillToText, setBillToDate)}
+                />
+                <input type="date" aria-label="To Date calendar" value={billToDate}
+                  style={{ width: "42px", minWidth: "42px", padding: "8px", cursor: "pointer" }}
+                  onChange={e => {
+                    setBillToDate(e.target.value);
+                    setBillToText(e.target.value ? formatDisplayDate(e.target.value) : "");
+                  }}
+                />
+              </div>
+              <button type="button" onClick={() => {
+                if (!billFromDate || !billToDate) { alert("कृपया From Date और To Date दोनों चुनें।"); return; }
+                if (billFromDate > billToDate) { alert("From Date, To Date से पहले या बराबर होनी चाहिए।"); return; }
+                printPatientBill("range");
+              }}>
+                Date-to-Date Bill PDF
+              </button>
             </div>
+          </div>
 
           <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th>Session</th>
+                  <th>Session No.</th>
                   <th>Date</th>
                   <th>Attendance</th>
                   <th>Treatment</th>
-                  <th>Notes</th>
                   <th>Fee</th>
+                  <th>Notes</th>
                   <th>Bill PDF</th>
                 </tr>
               </thead>
 
               <tbody>
-                {visits.map(v => {
-                  const status = v.attendance_status || "Present";
-
-                  return (
-                    <tr key={v.id}>
-                      <td>{v.display_session_number ?? "—"}</td>
-                      <td>{v.visit_date}</td>
-                      <td>{status}</td>
-
+                {visits.length > 0 ? (
+                  visits.map((v, index) => (
+                    <tr key={v.id || index}>
+                      <td>{v.display_session_number || "—"}</td>
                       <td>
-                        {status === "Present"
-                          ? (v.treatment || "—")
-                          : "—"}
+                        {String(v.visit_date || "")
+                          .slice(0, 10)
+                          .split("-")
+                          .reverse()
+                          .join("-")}
                       </td>
-
+                      <td>{v.attendance_status || "—"}</td>
+                      <td>{v.treatment || "—"}</td>
+                      <td>
+                        ₹{Number(v.fee || 0).toFixed(2)}
+                      </td>
                       <td>{v.notes || "—"}</td>
-
-                      <td>
-                        {v.fee == null ? "—" : "₹" + v.fee}
-                      </td>
-
-                      <td>
-                        <button
-                          type="button"
-                          onClick={() => printSessionBill(v)}
-                        >
-                          Print / Save PDF
-                        </button>
-                      </td>
+                      <td><button type="button" onClick={() => printSessionBill(v)}>Print / Save PDF</button></td>
                     </tr>
-                  );
-                })}
-
-                {visits.length === 0 && (
+                  ))
+                ) : (
                   <tr>
                     <td colSpan="7">
-                      अभी कोई Attendance / Session नहीं है।
+                      No Previous Sessions Found
                     </td>
                   </tr>
                 )}
@@ -1231,7 +1280,7 @@ const safe = value =>
               onChange={e => setPaymentForm({
                 ...paymentForm, amount: e.target.value
               })}
-              placeholder="जितनी रकम मिली है"
+              placeholder="Payment Amount"
               required
             />
 
@@ -1270,7 +1319,7 @@ const safe = value =>
               placeholder="Payment की जानकारी"
             />
 
-            <button disabled={loading}>
+            <button type="submit" disabled={loading}>
               {loading ? "Saving..." : "Save Payment"}
             </button>
           </form>
