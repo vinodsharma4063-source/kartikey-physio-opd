@@ -346,7 +346,75 @@ const [billToText, setBillToText] = useState("");
     }
 
     setLoading(false);
+  }async function deleteVisit(visit) {
+  const confirmed = window.confirm(
+    `क्या आप ${formatDisplayDate(visit.visit_date)} का यह Session Delete करना चाहते हैं?`
+  );
+
+  if (!confirmed) return;
+
+  setLoading(true);
+  setError("");
+  setMessage("");
+
+  try {
+    const { data, error } = await supabase
+      .from("visits")
+      .delete()
+      .eq("id", visit.id)
+      .select("id");
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      throw new Error("रिकॉर्ड Delete नहीं हुआ। Permission जाँचें।");
+    }
+
+    // बचे हुए Sessions की सूची लेकर क्रम दोबारा सही करें
+    const { data: remainingVisits, error: fetchError } = await supabase
+      .from("visits")
+      .select("id, visit_date, attendance_status, session_number")
+      .eq("patient_id", selectedPatient.id);
+
+    if (fetchError) throw fetchError;
+
+    const sortedVisits = [...(remainingVisits || [])].sort((a, b) => {
+      const dateCompare = String(a.visit_date || "").localeCompare(
+        String(b.visit_date || "")
+      );
+
+      if (dateCompare !== 0) return dateCompare;
+
+      return Number(a.session_number || 0) -
+        Number(b.session_number || 0);
+    });
+
+    let sessionNumber = 0;
+
+    for (const row of sortedVisits) {
+      if ((row.attendance_status || "Present") === "Present") {
+        sessionNumber++;
+
+        if (Number(row.session_number) !== sessionNumber) {
+          const { error: updateError } = await supabase
+            .from("visits")
+            .update({ session_number: sessionNumber })
+            .eq("id", row.id);
+
+          if (updateError) throw updateError;
+        }
+      }
+    }
+
+    await openHistory(selectedPatient);
+    setMessage("Session सफलतापूर्वक Delete हो गया।");
+
+  } catch (err) {
+    setError("Delete नहीं हुआ: " + err.message);
+  } finally {
+    setLoading(false);
   }
+}
 
   
 
@@ -506,23 +574,7 @@ const safe = value =>
       <p>Absent: ${billVisits.filter(v =>
         v.attendance_status === "Absent"
       ).length}</p>
-      <p>Holiday: ${billVisits.filter(v =>
-        v.attendance_status === "Holiday"
-      ).length}</p>
-      <p>Period Session Fees: ₹${money(billTotalFee)}</p>
-      <p>Payments Received in Period: ₹${money(billTotalPaid)}</p>
-      <p class="balance">
-        Period Difference: ₹${money(Math.abs(billDifference))}
-        (${billDifference > 0 ? "Fees exceed period payments" :
-          billDifference < 0 ? "Payments exceed period fees" : "Settled"})
-      </p>
-    </div>
-  ` : mode === "single" ? `
-    <h3>Selected Session Summary</h3>
-    <div class="summary">
-      <p>Selected Session Fee: ₹${money(billTotalFee)}</p>
-      <p>Attendance: ${safe(billVisits[0].attendance_status || "Present")}</p>
-    </div>
+      अवधि का बकाया (Period Balance)
   ` : "";
 
   const billTitle = mode === "single"
@@ -1209,6 +1261,7 @@ const safe = value =>
                   <th>Fee</th>
                   <th>Notes</th>
                   <th>Bill PDF</th>
+                  <th>Action</th>
                 </tr>
               </thead>
 
@@ -1231,11 +1284,21 @@ const safe = value =>
                       </td>
                       <td>{v.notes || "—"}</td>
                       <td><button type="button" onClick={() => printSessionBill(v)}>Print / Save PDF</button></td>
+                      <td>
+  <button
+    type="button"
+    disabled={loading}
+    onClick={() => deleteVisit(v)}
+    style={{ background: "#dc2626", color: "white" }}
+  >
+    Delete
+  </button>
+</td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="7">
+                    <td colSpan="8">
                       No Previous Sessions Found
                     </td>
                   </tr>
